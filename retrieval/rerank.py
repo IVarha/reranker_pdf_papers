@@ -7,12 +7,12 @@ import torch
 from retrieval.embed import Embedder
 
 class Reranker:
-    def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"):
+    def __init__(self, model_name: str = "cross-encoder/stsb-distilroberta-base"):
         self.model = CrossEncoder(model_name)
         self.device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
     
-    def rerank(self, query: str, documents: List[Dict[str, Any]], top_k: int = 5) -> List[Dict[str, Any]]:
+    def rerank(self, query: str, documents: List[Dict[str, Any]], top_k: int = 5, similarity_threshold: float = 0.0) -> List[Dict[str, Any]]:
         """
         Rerank documents based on their relevance to the query.
         
@@ -20,9 +20,10 @@ class Reranker:
             query: The search query
             documents: List of documents with their content and metadata
             top_k: Number of top results to return
+            similarity_threshold: Minimum similarity score required (default 0.0, adjust based on your needs)
             
         Returns:
-            List of reranked documents
+            List of reranked documents that meet the similarity threshold
         """
         # Prepare document pairs for scoring
         pairs = [(query, doc["content"]) for doc in documents]
@@ -33,11 +34,15 @@ class Reranker:
         # Combine documents with their scores
         scored_docs = list(zip(documents, scores))
         
-        # Sort by score in descending order
-        scored_docs.sort(key=lambda x: x[1], reverse=True)
+        # Print scores for debugging
+        print("Raw scores:", [(float(score), i) for i, (doc, score) in enumerate(scored_docs)])
+        
+        # Filter by threshold and sort by score in descending order
+        filtered_docs = [(doc, score) for doc, score in scored_docs if score >= similarity_threshold]
+        filtered_docs.sort(key=lambda x: x[1], reverse=True)
         
         # Return top_k results
-        return [doc for doc, _ in scored_docs[:top_k]]
+        return [doc for doc, _ in filtered_docs[:top_k]]
 
 def search_and_rerank(query: str, top_k: int = 5):
     """
@@ -68,7 +73,7 @@ def search_and_rerank(query: str, top_k: int = 5):
     ]
     
     # Rerank the documents
-    reranked_results = reranker.rerank(query, documents, top_k=top_k)
+    reranked_results = reranker.rerank(query, documents, top_k=top_k, similarity_threshold=0.5)
     
     return reranked_results
 
